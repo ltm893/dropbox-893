@@ -25,4 +25,8 @@ export const config = {
 
   // S3 bucket for public slideshow photos — must already exist, never created or deleted.
   publicBucket: "your-id-here-public",
+
+  // Optional: all slideshow folders live under this prefix (e.g. "images/").
+  // Omit or "" if each album is a folder at the bucket root.
+  publicSlideshowPrefix: "",
 };

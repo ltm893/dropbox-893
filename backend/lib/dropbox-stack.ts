@@ -13,6 +13,11 @@ export interface DropboxConfig {
   userPoolId:    string;
   privateBucket: string;
   publicBucket:  string;
+  /**
+   * Optional S3 prefix where slideshow folders live (e.g. `images/`).
+   * Use when albums are not at the bucket root. Omit or "" for root-only layouts.
+   */
+  publicSlideshowPrefix?: string;
 }
 
 export interface DropboxStackProps extends cdk.StackProps {
@@ -26,6 +31,14 @@ export class DropboxStack extends cdk.Stack {
     super(scope, id, props);
 
     const { config, dropboxClientId, dropboxApiLogicalId } = props;
+
+    const slideshowPrefixRaw = (config.publicSlideshowPrefix ?? "").trim();
+    const publicSlideshowPrefix =
+      slideshowPrefixRaw === ""
+        ? ""
+        : slideshowPrefixRaw.endsWith("/")
+          ? slideshowPrefixRaw
+          : `${slideshowPrefixRaw}/`;
 
     // ── Cognito — import existing User Pool ───────────────────────────────────
     const userPool = cognito.UserPool.fromUserPoolId(
@@ -65,7 +78,10 @@ export class DropboxStack extends cdk.Stack {
       runtime:     lambda.Runtime.NODEJS_20_X,
       handler:     "handler.handler",
       code:        lambda.Code.fromAsset(path.join(__dirname, "../lambda/getDlivPhotoBuckets")),
-      environment: { PUBLIC_BUCKET: config.publicBucket },
+      environment: {
+        PUBLIC_BUCKET:             config.publicBucket,
+        PUBLIC_SLIDESHOW_PREFIX:   publicSlideshowPrefix,
+      },
       timeout:     cdk.Duration.seconds(10),
     });
 
@@ -73,7 +89,10 @@ export class DropboxStack extends cdk.Stack {
       runtime:     lambda.Runtime.NODEJS_20_X,
       handler:     "handler.handler",
       code:        lambda.Code.fromAsset(path.join(__dirname, "../lambda/getDlivPhotos")),
-      environment: { PUBLIC_BUCKET: config.publicBucket },
+      environment: {
+        PUBLIC_BUCKET:             config.publicBucket,
+        PUBLIC_SLIDESHOW_PREFIX:   publicSlideshowPrefix,
+      },
       timeout:     cdk.Duration.seconds(10),
     });
 

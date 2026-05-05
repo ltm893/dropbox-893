@@ -32,6 +32,8 @@ Template / CDK implementation — deploy with `deploy.sh` using your own `config
 - S3 private bucket — from `config.ts`
 - S3 public bucket — from `config.ts` (slideshow source)
 
+Slideshow album layout is controlled by **`publicSlideshowPrefix`** in `config.ts` (e.g. `"images/"` when each album folder lives under that prefix).
+
 ## Presigned URL expiry
 - Downloads: 43200 seconds (12 hours)
 - Uploads:   900 seconds (15 minutes)
@@ -53,8 +55,12 @@ export const config = {
   userPoolId:    "us-east-1_XXXXXXXXX",
   privateBucket: "your-private-bucket-name",
   publicBucket:  "your-public-slideshow-bucket-name",
+  publicSlideshowPrefix: "",
 };
 ```
+
+Use `"images/"` (or another prefix) when albums are folders under that path instead of at the bucket root.
+
 Copy from `backend/bin/config.example.ts` and edit locally.
 
 ## Deploy
@@ -68,7 +74,7 @@ Writes `dropbox_outputs.json` at repo root (gitignored).
 ```bash
 cd backend
 ./scripts/verify.sh --public-only
-./scripts/verify.sh --email your@email.com --password 'yourpassword'
+./scripts/verify.sh --email your@example.com --password 'yourpassword'
 ```
 
 ## API routes — `/files` (Cognito)

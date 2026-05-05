@@ -71,6 +71,20 @@ if [ "$ALBUMS_HTTP" = "200" ]; then
   pass "GET ${API_URL}albums (HTTP 200)"
   if command -v python3 >/dev/null 2>&1; then
     python3 -c "import json; json.load(open('/tmp/dropbox_verify_albums.json'))" 2>/dev/null && pass "GET /albums returns JSON" || fail "GET /albums body is not valid JSON"
+    # Valid JSON can still be {\"albums\":[]} — that produces exactly \"No albums returned\" in the web UI.
+    if python3 -c "
+import json
+with open('/tmp/dropbox_verify_albums.json') as f:
+    d = json.load(f)
+a = d.get('albums')
+assert isinstance(a, list) and len(a) > 0
+" 2>/dev/null; then
+      pass "GET /albums returns non-empty albums[]"
+    else
+      echo ""
+      echo "  ⚠️  /albums JSON has no albums (empty list or wrong shape). The Amplify slideshow will show \"No albums returned\" even though HTTP is 200."
+      echo "      Check the deployed Lambda env PUBLIC_SLIDESHOW_PREFIX, PUBLIC_BUCKET, and that objects match the slideshow prefix / image extensions."
+    fi
   fi
 else
   fail "GET ${API_URL}albums (expected HTTP 200, got HTTP ${ALBUMS_HTTP})"
