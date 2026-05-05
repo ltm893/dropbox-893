@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "aws_region": "us-east-1",
+  "auth": {
+    "user_pool_id":        "us-east-1_XXXXXXXXX",
+    "user_pool_client_id": "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "api": {
+    "base_url": "https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/"
+  },
+  "storage": {
+    "private_bucket": "your-id-here-private"
+  }
+}

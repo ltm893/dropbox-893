@@ -1,0 +1,8 @@
+node_modules/
+backend/node_modules/
+backend/cdk.out/
+backend/dist/
+backend/bin/config.ts
+dropbox_outputs.json
+.DS_Store
+.env
