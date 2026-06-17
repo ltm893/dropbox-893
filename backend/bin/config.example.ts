@@ -29,4 +29,7 @@ export const config = {
   // Optional: all slideshow folders live under this prefix (e.g. "images/").
   // Omit or "" if each album is a folder at the bucket root.
   publicSlideshowPrefix: "",
+
+  // Top-level shared folders auto-created at bucket root; remove blocked, empty allowed.
+  reservedSharedPrefixes: ["Music/", "Photos/"],
 };

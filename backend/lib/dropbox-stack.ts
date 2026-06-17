@@ -18,6 +18,8 @@ export interface DropboxConfig {
    * Use when albums are not at the bucket root. Omit or "" for root-only layouts.
    */
   publicSlideshowPrefix?: string;
+  /** Top-level shared folders that cannot be removed (empty allowed). Default: Music/, Photos/ */
+  reservedSharedPrefixes?: string[];
 }
 
 export interface DropboxStackProps extends cdk.StackProps {
@@ -39,6 +41,12 @@ export class DropboxStack extends cdk.Stack {
         : slideshowPrefixRaw.endsWith("/")
           ? slideshowPrefixRaw
           : `${slideshowPrefixRaw}/`;
+
+    const reservedSharedPrefixes = (config.reservedSharedPrefixes ?? ["Music/", "Photos/"])
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => (p.endsWith("/") ? p : `${p}/`))
+      .join(",");
 
     // ── Cognito — import existing User Pool ───────────────────────────────────
     const userPool = cognito.UserPool.fromUserPoolId(
@@ -69,7 +77,10 @@ export class DropboxStack extends cdk.Stack {
       runtime:     lambda.Runtime.NODEJS_20_X,
       handler:     "handler.handler",
       code:        lambda.Code.fromAsset(path.join(__dirname, "../lambda/getPrivateFiles")),
-      environment: { PRIVATE_BUCKET: config.privateBucket },
+      environment: {
+        PRIVATE_BUCKET:            config.privateBucket,
+        RESERVED_SHARED_PREFIXES:  reservedSharedPrefixes,
+      },
       timeout:     cdk.Duration.seconds(10),
     });
 

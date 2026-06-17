@@ -2,6 +2,11 @@
 console.log('Loading getPrivateFiles function');
 
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET;
+const RESERVED_SHARED_PREFIXES = (process.env.RESERVED_SHARED_PREFIXES ?? "Music/,Photos/")
+  .split(",")
+  .map((p) => p.trim())
+  .filter(Boolean)
+  .map(normalizeFolderPrefix);
 
 import {
   S3Client,
@@ -33,6 +38,7 @@ export const handler = async (event) => {
     // GET /files  →  list files and folders
     if (method === "GET" && (!pathParams || !pathParams.key)) {
       const prefix = event.queryStringParameters?.prefix ?? "";
+      if (prefix === "") await ensureReservedFolders();
       const files = await listFiles(prefix);
       return respond(200, files);
     }
@@ -40,6 +46,9 @@ export const handler = async (event) => {
     // DELETE /files/{key+}  →  delete a single file
     if (method === "DELETE" && pathParams?.key) {
       const key = decodeURIComponent(pathParams.key);
+      if (isReservedTopFolder(key)) {
+        return respond(403, { error: "Cannot delete reserved shared folder" });
+      }
       await deleteObject(key);
       return respond(200, { deleted: key });
     }
@@ -49,6 +58,9 @@ export const handler = async (event) => {
       const prefix = event.queryStringParameters?.prefix ?? "";
       const mode   = event.queryStringParameters?.mode ?? "remove";
       if (!prefix) return respond(400, { error: "prefix is required" });
+      if (mode === "remove" && isReservedTopFolder(prefix)) {
+        return respond(403, { error: "Cannot remove reserved shared folder" });
+      }
       const count = await deletePrefix(prefix, mode === "remove");
       return respond(200, { deleted: count, prefix });
     }
@@ -63,6 +75,35 @@ export const handler = async (event) => {
     return respond(500, { error: err.message });
   }
 };
+
+function normalizeFolderPrefix(prefix) {
+  const trimmed = (prefix ?? "").trim();
+  if (!trimmed) return "";
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+function isReservedTopFolder(prefix) {
+  const norm = normalizeFolderPrefix(prefix);
+  return RESERVED_SHARED_PREFIXES.includes(norm);
+}
+
+async function ensureReservedFolders() {
+  await Promise.all(RESERVED_SHARED_PREFIXES.map((key) => ensureFolderMarker(key)));
+}
+
+async function ensureFolderMarker(key) {
+  const { Contents } = await client.send(
+    new ListObjectsV2Command({ Bucket: PRIVATE_BUCKET, Prefix: key, MaxKeys: 1 })
+  );
+  const exists = (Contents ?? []).some((obj) => obj.Key === key);
+  if (exists) return;
+  await client.send(new PutObjectCommand({
+    Bucket: PRIVATE_BUCKET,
+    Key: key,
+    Body: "",
+    ContentType: "application/x-directory",
+  }));
+}
 
 async function listFiles(prefix) {
   const command = new ListObjectsV2Command({

@@ -143,6 +143,16 @@ else
   check "GET /files?prefix=Music/" "200" "$STATUS"
 
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: ${ID_TOKEN}" "${API_URL}files?prefix=Photos/")
+  check "GET /files?prefix=Photos/" "200" "$STATUS"
+
+  ENCODED_PHOTOS=$(python3 -c "import urllib.parse; print(urllib.parse.quote('Photos/', safe=''))" 2>/dev/null)
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: ${ID_TOKEN}" \
+    "${API_URL}files?prefix=${ENCODED_PHOTOS}&mode=remove")
+  check "DELETE /files?prefix=Photos/&mode=remove (reserved — expect 403)" "403" "$STATUS"
+
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: ${ID_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{"key":"verify-test/test.txt","contentType":"text/plain"}' \
