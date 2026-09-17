@@ -1,6 +1,6 @@
 # CONTEXT.md — dropbox-893
 # Read this first at the start of every session.
-# Last updated: 2026-05-05
+# Last updated: 2026-09-17
 
 ## What this repo is
 Standalone add-on for cognito-s3-stack-893.
@@ -80,7 +80,7 @@ cd backend
 ## API routes — `/files` (Cognito)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | /files | Cognito | List files and folders |
+| GET | /files | Cognito | List files and folders (`hasMp3s`, `hasImages`, `hasFiles`, `hasSubFolders`) |
 | GET | /files?prefix=X | Cognito | List with prefix |
 | POST | /files | Cognito | Get presigned upload URL (15min) |
 | GET | /files/{key+} | Cognito | Get presigned download URL (12hr) |

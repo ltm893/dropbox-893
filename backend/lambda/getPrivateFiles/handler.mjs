@@ -119,7 +119,8 @@ async function listFiles(prefix) {
         CommonPrefixes.map(async (p) => {
           const info = await getFolderInfo(p.Prefix);
           return { key: p.Prefix, type: "folder", hasMp3s: info.hasMp3s,
-                   hasSubFolders: info.hasSubFolders, hasFiles: info.hasFiles };
+                   hasImages: info.hasImages, hasSubFolders: info.hasSubFolders,
+                   hasFiles: info.hasFiles };
         })
       );
       folders = folders.concat(folderChecks);
@@ -149,6 +150,16 @@ async function getPresignedUploadUrl(key, contentType) {
   return getSignedUrl(client, command, { expiresIn: 900 });
 }
 
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp"]);
+
+function isImageObjectKey(key) {
+  const name = (key.split("/").pop() || "").toLowerCase();
+  if (name === "captions.json") return false;
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTS.has(name.slice(dot + 1));
+}
+
 async function getFolderInfo(prefix) {
   const { Contents, CommonPrefixes } = await client.send(
     new ListObjectsV2Command({ Bucket: PRIVATE_BUCKET, Prefix: prefix, Delimiter: "/" })
@@ -156,6 +167,7 @@ async function getFolderInfo(prefix) {
   const directFiles = (Contents ?? []).filter((obj) => obj.Key !== prefix);
   return {
     hasMp3s:       directFiles.some((obj) => obj.Key.toLowerCase().endsWith(".mp3")),
+    hasImages:     directFiles.some((obj) => isImageObjectKey(obj.Key)),
     hasSubFolders: (CommonPrefixes ?? []).length > 0,
     hasFiles:      directFiles.length > 0,
   };
