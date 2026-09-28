@@ -2,7 +2,7 @@
 console.log('Loading getPrivateFiles function');
 
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET;
-const RESERVED_SHARED_PREFIXES = (process.env.RESERVED_SHARED_PREFIXES ?? "Music/,Photos/")
+const RESERVED_SHARED_PREFIXES = (process.env.RESERVED_SHARED_PREFIXES ?? "Music/,Photos/,Videos/")
   .split(",")
   .map((p) => p.trim())
   .filter(Boolean)
@@ -12,7 +12,9 @@ import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
+  CopyObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
@@ -38,7 +40,9 @@ export const handler = async (event) => {
     // GET /files  →  list files and folders
     if (method === "GET" && (!pathParams || !pathParams.key)) {
       const prefix = event.queryStringParameters?.prefix ?? "";
+      const userId = userSub(event);
       if (prefix === "") await ensureReservedFolders();
+      if (isMineRootPrefix(prefix, userId)) await ensureUserLibraryFolders(userId);
       const files = await listFiles(prefix);
       return respond(200, files);
     }
@@ -46,7 +50,7 @@ export const handler = async (event) => {
     // DELETE /files/{key+}  →  delete a single file
     if (method === "DELETE" && pathParams?.key) {
       const key = decodeURIComponent(pathParams.key);
-      if (isReservedTopFolder(key)) {
+      if (isReservedTopFolder(key, userSub(event))) {
         return respond(403, { error: "Cannot delete reserved shared folder" });
       }
       await deleteObject(key);
@@ -58,21 +62,35 @@ export const handler = async (event) => {
       const prefix = event.queryStringParameters?.prefix ?? "";
       const mode   = event.queryStringParameters?.mode ?? "remove";
       if (!prefix) return respond(400, { error: "prefix is required" });
-      if (mode === "remove" && isReservedTopFolder(prefix)) {
+      if (mode === "remove" && isReservedTopFolder(prefix, userSub(event))) {
         return respond(403, { error: "Cannot remove reserved shared folder" });
       }
       const count = await deletePrefix(prefix, mode === "remove");
       return respond(200, { deleted: count, prefix });
     }
 
-    // GET /files/{key+}  →  presigned download URL (12 hours)
+    // PATCH /files  →  rename a file in place
+    if (method === "PATCH" && (!pathParams || !pathParams.key)) {
+      const body = JSON.parse(event.body ?? "{}");
+      const fromKey = String(body.key || "").replace(/^\/+/, "");
+      const dest = destKeyForRename(fromKey, body.name);
+      if (dest.unchanged) return respond(200, { key: dest.destKey, name: dest.name, unchanged: true });
+      if (isReservedTopFolder(fromKey, userSub(event)) || isReservedTopFolder(dest.destKey, userSub(event))) {
+        return respond(403, { error: "Cannot rename a reserved folder" });
+      }
+      const renamed = await renameObject(fromKey, dest.destKey);
+      return respond(200, { key: renamed, name: dest.name, from: fromKey });
+    }
+
+    if (!pathParams?.key) return respond(404, { error: "Not found" });
     const key = decodeURIComponent(pathParams.key);
     const url = await getPresignedUrl(key);
     return respond(200, { url });
 
   } catch (err) {
     console.error(err);
-    return respond(500, { error: err.message });
+    const status = Number(err.statusCode) || 500;
+    return respond(status, { error: err.message });
   }
 };
 
@@ -82,13 +100,35 @@ function normalizeFolderPrefix(prefix) {
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
 
-function isReservedTopFolder(prefix) {
+function userSub(event) {
+  const sub = String(event.requestContext?.authorizer?.claims?.sub || "").trim();
+  return /^[A-Za-z0-9-]{8,128}$/.test(sub) ? sub : "";
+}
+
+function isMineRootPrefix(prefix, userId) {
+  if (!userId) return false;
   const norm = normalizeFolderPrefix(prefix);
-  return RESERVED_SHARED_PREFIXES.includes(norm);
+  return norm === `users/${userId}/`;
+}
+
+function isReservedTopFolder(prefix, userId) {
+  const norm = normalizeFolderPrefix(prefix);
+  if (RESERVED_SHARED_PREFIXES.includes(norm)) return true;
+  if (!userId) return false;
+  return RESERVED_SHARED_PREFIXES.some((name) => norm === `users/${userId}/${name}`);
 }
 
 async function ensureReservedFolders() {
   await Promise.all(RESERVED_SHARED_PREFIXES.map((key) => ensureFolderMarker(key)));
+}
+
+async function ensureUserLibraryFolders(userId) {
+  if (!userId) return;
+  const keys = [
+    `users/${userId}/`,
+    ...RESERVED_SHARED_PREFIXES.map((name) => `users/${userId}/${name}`),
+  ];
+  await Promise.all(keys.map((key) => ensureFolderMarker(key)));
 }
 
 async function ensureFolderMarker(key) {
@@ -175,6 +215,67 @@ async function getFolderInfo(prefix) {
 
 async function deleteObject(key) {
   await client.send(new DeleteObjectCommand({ Bucket: PRIVATE_BUCKET, Key: key }));
+}
+
+async function renameObject(fromKey, destKey) {
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: PRIVATE_BUCKET, Key: destKey }));
+    const err = new Error("A file with that name already exists.");
+    err.statusCode = 409;
+    throw err;
+  } catch (err) {
+    if (err.statusCode === 409) throw err;
+    const code = err.name || err.Code || "";
+    const http = Number(err.$metadata?.httpStatusCode) || 0;
+    if (code !== "NotFound" && http !== 404) throw err;
+  }
+  await client.send(new CopyObjectCommand({
+    Bucket: PRIVATE_BUCKET,
+    Key: destKey,
+    CopySource: `${PRIVATE_BUCKET}/${fromKey.split("/").map(encodeURIComponent).join("/")}`,
+    MetadataDirective: "COPY",
+  }));
+  await client.send(new DeleteObjectCommand({ Bucket: PRIVATE_BUCKET, Key: fromKey }));
+  return destKey;
+}
+
+function destKeyForRename(fromKey, typedName) {
+  const key = String(fromKey || "").replace(/^\/+/, "");
+  if (!key || key.endsWith("/")) {
+    const err = new Error("Choose a file to rename.");
+    err.statusCode = 400;
+    throw err;
+  }
+  const parts = key.split("/").filter(Boolean);
+  const oldName = parts.pop() || "";
+  const oldExt = fileExtension(oldName);
+  let name = String(typedName || "").split(/[/\\]/).pop() || "";
+  name = name.replace(/[\u0000-\u001f]/g, "").trim();
+  if (!name) {
+    const err = new Error("Enter a file name.");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!fileExtension(name) && oldExt) name = `${name}.${oldExt}`;
+  name = name
+    .replace(/[^A-Za-z0-9._ -]+/g, "-")
+    .replace(/ {2,}/g, " ")
+    .replace(/^[.-]+|[.-]+$/g, "");
+  if (!name) {
+    const err = new Error("Enter a file name.");
+    err.statusCode = 400;
+    throw err;
+  }
+  name = name.slice(0, 180);
+  return { destKey: [...parts, name].join("/"), name, unchanged: `${[...parts, name].join("/")}` === key };
+}
+
+function fileExtension(name) {
+  const base = String(name || "").split("/").pop() || "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return "";
+  const ext = base.slice(dot + 1);
+  return /^[A-Za-z0-9]{1,8}$/.test(ext) ? ext.toLowerCase() : "";
 }
 
 async function deletePrefix(prefix, removeFolder) {

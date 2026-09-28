@@ -18,7 +18,7 @@ export interface DropboxConfig {
    * Use when albums are not at the bucket root. Omit or "" for root-only layouts.
    */
   publicSlideshowPrefix?: string;
-  /** Top-level shared folders that cannot be removed (empty allowed). Default: Music/, Photos/ */
+  /** Top-level shared folders that cannot be removed (empty allowed). Default: Music/, Photos/, Videos/ */
   reservedSharedPrefixes?: string[];
 }
 
@@ -42,7 +42,7 @@ export class DropboxStack extends cdk.Stack {
           ? slideshowPrefixRaw
           : `${slideshowPrefixRaw}/`;
 
-    const reservedSharedPrefixes = (config.reservedSharedPrefixes ?? ["Music/", "Photos/"])
+    const reservedSharedPrefixes = (config.reservedSharedPrefixes ?? ["Music/", "Photos/", "Videos/"])
       .map((p) => p.trim())
       .filter(Boolean)
       .map((p) => (p.endsWith("/") ? p : `${p}/`))
@@ -81,7 +81,7 @@ export class DropboxStack extends cdk.Stack {
         PRIVATE_BUCKET:            config.privateBucket,
         RESERVED_SHARED_PREFIXES:  reservedSharedPrefixes,
       },
-      timeout:     cdk.Duration.seconds(10),
+      timeout:     cdk.Duration.seconds(60),
     });
 
     // ── Slideshow Lambdas ──────────────────────────────────────────────────────
@@ -180,6 +180,7 @@ export class DropboxStack extends cdk.Stack {
     const files = api.root.addResource("files");
     files.addMethod("GET",    new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
     files.addMethod("POST",   new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
+    files.addMethod("PATCH",  new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
     files.addMethod("DELETE", new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
     const fileKey = files.addResource("{key+}");
     fileKey.addMethod("GET",    new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
