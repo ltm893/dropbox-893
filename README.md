@@ -48,7 +48,16 @@ From `backend/`:
 
 If you use **cognito-s3-stack-893**, deploy that first and take **`user_pool_id`** and bucket names from **`base_outputs.json`** into **`bin/config.ts`**.
 
-Downstream apps (web or mobile) read **`dropbox_outputs.json`** or equivalent env vars for **`api.base_url`** and Cognito app client settings.
+`deploy.sh` creates the app client `{id}-dropbox-client` with `ALLOW_USER_PASSWORD_AUTH` and writes it to **`dropbox_outputs.json`**. The website copies these fields into Amplify:
+
+| Amplify variable | Field |
+|------------------|--------|
+| `APP_REGION` | `aws_region` |
+| `USER_POOL_ID` | `auth.user_pool_id` |
+| `USER_POOL_CLIENT_ID` | `auth.user_pool_client_id` |
+| `DROPBOX_API_URL` | `api.base_url` |
+
+Do not use `auth.user_pool_client_id` from `base_outputs.json`. That is `{id}-app-client`, a different client.
 
 ## Project layout
 
