@@ -26,7 +26,8 @@ git clone <your-fork-or-repo-url>
 cd dropbox-893/backend
 
 cp bin/config.example.ts bin/config.ts
-# Edit bin/config.ts — set id, awsRegion, userPoolId, privateBucket, publicBucket,
+# Edit bin/config.ts — set userPoolId, privateBucket, publicBucket.
+# id comes from the sibling cognito-s3-stack-893/base/bin/config.ts.
 # and optionally publicSlideshowPrefix (e.g. "images/" when albums sit under that prefix).
 
 npm install
@@ -46,7 +47,7 @@ From `backend/`:
 
 ## Integrating with the base stack
 
-If you use **cognito-s3-stack-893**, deploy that first and take **`user_pool_id`** and bucket names from **`base_outputs.json`** into **`bin/config.ts`**.
+If you use **cognito-s3-stack-893**, deploy that first. `id` is read from that repo's `base/bin/config.ts` when this config omits it. Take **`user_pool_id`** and bucket names from **`base_outputs.json`** into **`bin/config.ts`**.
 
 `deploy.sh` creates the app client `{id}-dropbox-client` with `ALLOW_USER_PASSWORD_AUTH` and writes it to **`dropbox_outputs.json`**. The website copies these fields into Amplify:
 

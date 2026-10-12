@@ -3,7 +3,10 @@
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import { DropboxStack } from "../lib/dropbox-stack";
-import { config } from "./config";
+import { withBaseId } from "./baseConfig";
+import { config as localConfig } from "./config";
+
+const config = withBaseId(localConfig);
 
 const app = new cdk.App();
 
