@@ -107,6 +107,17 @@ export class DropboxStack extends cdk.Stack {
       timeout:     cdk.Duration.seconds(10),
     });
 
+    const sharedAlbumsLambda = new lambda.Function(this, "SharedAlbums", {
+      runtime:     lambda.Runtime.NODEJS_20_X,
+      handler:     "handler.handler",
+      code:        lambda.Code.fromAsset(path.join(__dirname, "../lambda/sharedAlbums")),
+      environment: {
+        PRIVATE_BUCKET: config.privateBucket,
+        PUBLIC_BUCKET:  config.publicBucket,
+      },
+      timeout:     cdk.Duration.seconds(60),
+    });
+
     // ── IAM — public bucket read for slideshow Lambdas ────────────────────────
     const publicBucketReadPolicy = new iam.PolicyStatement({
       actions:   ["s3:GetObject", "s3:ListBucket"],
@@ -117,6 +128,21 @@ export class DropboxStack extends cdk.Stack {
     });
     getDlivPhotoBucketsLambda.addToRolePolicy(publicBucketReadPolicy);
     getDlivPhotosLambda.addToRolePolicy(publicBucketReadPolicy);
+
+    sharedAlbumsLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions:   ["s3:GetObject", "s3:ListBucket"],
+      resources: [
+        `arn:aws:s3:::${config.privateBucket}`,
+        `arn:aws:s3:::${config.privateBucket}/*`,
+      ],
+    }));
+    sharedAlbumsLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions:   ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      resources: [
+        `arn:aws:s3:::${config.publicBucket}`,
+        `arn:aws:s3:::${config.publicBucket}/*`,
+      ],
+    }));
 
     // ── IAM — explicit policy covering private bucket ─────────────────────────
     getPrivateFilesLambda.addToRolePolicy(new iam.PolicyStatement({
@@ -185,6 +211,19 @@ export class DropboxStack extends cdk.Stack {
     const fileKey = files.addResource("{key+}");
     fileKey.addMethod("GET",    new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
     fileKey.addMethod("DELETE", new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
+
+    const sharedAlbums = api.root.addResource("shared-albums");
+    const sharedAlbumsIntegration = new apigateway.LambdaIntegration(sharedAlbumsLambda);
+    sharedAlbums.addMethod("GET", sharedAlbumsIntegration);
+    sharedAlbums.addMethod("POST", sharedAlbumsIntegration, authOptions);
+    sharedAlbums.addResource("mine").addMethod("GET", sharedAlbumsIntegration, authOptions);
+    const sharedAlbum = sharedAlbums.addResource("{owner}").addResource("{slug}");
+    sharedAlbum.addMethod("GET", sharedAlbumsIntegration);
+    sharedAlbum.addMethod("DELETE", sharedAlbumsIntegration, authOptions);
+    const sharedAlbumPhotos = sharedAlbum.addResource("photos");
+    sharedAlbumPhotos.addMethod("POST", sharedAlbumsIntegration, authOptions);
+    sharedAlbumPhotos.addMethod("DELETE", sharedAlbumsIntegration, authOptions);
+    sharedAlbumPhotos.addResource("{filename}").addMethod("DELETE", sharedAlbumsIntegration, authOptions);
 
     // ── Slideshow routes (no auth — public) ───────────────────────────────────
     const albums = api.root.addResource("albums");

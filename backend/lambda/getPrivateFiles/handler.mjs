@@ -19,6 +19,7 @@ import {
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { destKeyForRename } from "./destKey.mjs";
 
 const client = new S3Client({});
 
@@ -69,7 +70,7 @@ export const handler = async (event) => {
       return respond(200, { deleted: count, prefix });
     }
 
-    // PATCH /files  →  rename a file in place
+    // PATCH /files  →  rename a file or folder in place
     if (method === "PATCH" && (!pathParams || !pathParams.key)) {
       const body = JSON.parse(event.body ?? "{}");
       const fromKey = String(body.key || "").replace(/^\/+/, "");
@@ -78,8 +79,10 @@ export const handler = async (event) => {
       if (isReservedTopFolder(fromKey, userSub(event)) || isReservedTopFolder(dest.destKey, userSub(event))) {
         return respond(403, { error: "Cannot rename a reserved folder" });
       }
-      const renamed = await renameObject(fromKey, dest.destKey);
-      return respond(200, { key: renamed, name: dest.name, from: fromKey });
+      const renamed = dest.folder
+        ? await renamePrefix(dest.fromKey, dest.destKey)
+        : await renameObject(fromKey, dest.destKey);
+      return respond(200, { key: renamed, name: dest.name, from: dest.fromKey || fromKey });
     }
 
     if (!pathParams?.key) return respond(404, { error: "Not found" });
@@ -217,6 +220,47 @@ async function deleteObject(key) {
   await client.send(new DeleteObjectCommand({ Bucket: PRIVATE_BUCKET, Key: key }));
 }
 
+function encodedCopySource(key) {
+  return `${PRIVATE_BUCKET}/${String(key).split("/").map(encodeURIComponent).join("/")}`;
+}
+
+async function copyObject(fromKey, destKey) {
+  await client.send(new CopyObjectCommand({
+    Bucket: PRIVATE_BUCKET,
+    Key: destKey,
+    CopySource: encodedCopySource(fromKey),
+    MetadataDirective: "COPY",
+  }));
+}
+
+async function prefixHasObjects(prefix) {
+  const { Contents, KeyCount } = await client.send(new ListObjectsV2Command({
+    Bucket: PRIVATE_BUCKET,
+    Prefix: prefix,
+    MaxKeys: 1,
+  }));
+  return Boolean(KeyCount) || (Contents ?? []).length > 0;
+}
+
+async function listPrefixKeys(prefix) {
+  const keys = [];
+  let continuationToken;
+  do {
+    const { Contents, IsTruncated, NextContinuationToken } = await client.send(
+      new ListObjectsV2Command({
+        Bucket: PRIVATE_BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    );
+    continuationToken = IsTruncated ? NextContinuationToken : undefined;
+    for (const obj of Contents ?? []) {
+      if (obj.Key) keys.push(obj.Key);
+    }
+  } while (continuationToken);
+  return keys;
+}
+
 async function renameObject(fromKey, destKey) {
   try {
     await client.send(new HeadObjectCommand({ Bucket: PRIVATE_BUCKET, Key: destKey }));
@@ -229,53 +273,36 @@ async function renameObject(fromKey, destKey) {
     const http = Number(err.$metadata?.httpStatusCode) || 0;
     if (code !== "NotFound" && http !== 404) throw err;
   }
-  await client.send(new CopyObjectCommand({
-    Bucket: PRIVATE_BUCKET,
-    Key: destKey,
-    CopySource: `${PRIVATE_BUCKET}/${fromKey.split("/").map(encodeURIComponent).join("/")}`,
-    MetadataDirective: "COPY",
-  }));
+  await copyObject(fromKey, destKey);
   await client.send(new DeleteObjectCommand({ Bucket: PRIVATE_BUCKET, Key: fromKey }));
   return destKey;
 }
 
-function destKeyForRename(fromKey, typedName) {
-  const key = String(fromKey || "").replace(/^\/+/, "");
-  if (!key || key.endsWith("/")) {
-    const err = new Error("Choose a file to rename.");
-    err.statusCode = 400;
+async function renamePrefix(fromPrefix, destPrefix) {
+  const from = fromPrefix.endsWith("/") ? fromPrefix : `${fromPrefix}/`;
+  const dest = destPrefix.endsWith("/") ? destPrefix : `${destPrefix}/`;
+  if (await prefixHasObjects(dest)) {
+    const err = new Error("A folder with that name already exists.");
+    err.statusCode = 409;
     throw err;
   }
-  const parts = key.split("/").filter(Boolean);
-  const oldName = parts.pop() || "";
-  const oldExt = fileExtension(oldName);
-  let name = String(typedName || "").split(/[/\\]/).pop() || "";
-  name = name.replace(/[\u0000-\u001f]/g, "").trim();
-  if (!name) {
-    const err = new Error("Enter a file name.");
-    err.statusCode = 400;
+  const keys = await listPrefixKeys(from);
+  if (!keys.length) {
+    const err = new Error("Folder not found.");
+    err.statusCode = 404;
     throw err;
   }
-  if (!fileExtension(name) && oldExt) name = `${name}.${oldExt}`;
-  name = name
-    .replace(/[^A-Za-z0-9._ -]+/g, "-")
-    .replace(/ {2,}/g, " ")
-    .replace(/^[.-]+|[.-]+$/g, "");
-  if (!name) {
-    const err = new Error("Enter a file name.");
-    err.statusCode = 400;
-    throw err;
+  for (const key of keys) {
+    await copyObject(key, `${dest}${key.slice(from.length)}`);
   }
-  name = name.slice(0, 180);
-  return { destKey: [...parts, name].join("/"), name, unchanged: `${[...parts, name].join("/")}` === key };
-}
-
-function fileExtension(name) {
-  const base = String(name || "").split("/").pop() || "";
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return "";
-  const ext = base.slice(dot + 1);
-  return /^[A-Za-z0-9]{1,8}$/.test(ext) ? ext.toLowerCase() : "";
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+    await client.send(new DeleteObjectsCommand({
+      Bucket: PRIVATE_BUCKET,
+      Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+    }));
+  }
+  return dest;
 }
 
 async function deletePrefix(prefix, removeFolder) {
