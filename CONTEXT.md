@@ -18,6 +18,7 @@ Template / CDK implementation — deploy with `deploy.sh` using your own `config
 | `calendar-893` | Calendar CRUD (separate stack) |
 | `music-player-893` | Example consumer (iOS) |
 | `web-app-893` | Generic forkable web frontend |
+| `video-convert-893` | Family DVD ingest + ffmpeg convert |
 | `mileage-expense-tracker-893` | Separate MET stack |
 
 ## What this stack owns
@@ -39,7 +40,7 @@ Slideshow album layout is controlled by **`publicSlideshowPrefix`** in `config.t
 - Uploads:   900 seconds (15 minutes)
 
 ## Example resource naming (after deploy)
-Replace `{id}` with your `config.id` (e.g. `myorg-demo`):
+`{id}` is the `id` in `cognito-s3-stack-893/base/bin/config.ts` when this config omits it. An `id` already set here is kept.
 
 - Stack: `DropboxStack-{id}`
 - API Gateway name: `{id}-dropbox-api`
@@ -50,12 +51,13 @@ Fill in real IDs only in **gitignored** `backend/bin/config.ts` — never commit
 ## Example `config.ts` shape (do not copy real IDs into git)
 ```ts
 export const config = {
-  id:            "your-id-here",
+  // id comes from cognito-s3-stack-893/base/bin/config.ts
   awsRegion:     "us-east-1",
   userPoolId:    "us-east-1_XXXXXXXXX",
   privateBucket: "your-private-bucket-name",
   publicBucket:  "your-public-slideshow-bucket-name",
   publicSlideshowPrefix: "",
+  reservedSharedPrefixes: ["Music/", "Photos/", "Videos/"],
 };
 ```
 

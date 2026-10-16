@@ -7,11 +7,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const config = {
-  // Short prefix for all AWS resource names.
-  // Lowercase letters, numbers, hyphens only.
-  id: "your-id-here",
+  // id is read from the sibling cognito-s3-stack-893/base/bin/config.ts.
+  // Set id here only to keep an already-deployed stack name.
 
-  // AWS region to deploy into.
+  // AWS region to deploy into. Omit to use the base config region.
   awsRegion: "us-east-1",
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -31,5 +30,5 @@ export const config = {
   publicSlideshowPrefix: "",
 
   // Top-level shared folders auto-created at bucket root; remove blocked, empty allowed.
-  reservedSharedPrefixes: ["Music/", "Photos/"],
+  reservedSharedPrefixes: ["Music/", "Photos/", "Videos/"],
 };

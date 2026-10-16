@@ -67,6 +67,21 @@ ALBUMS_HTTP=$(curl -sS -o /tmp/dropbox_verify_albums.json -w "%{http_code}" "${A
 CURL_EC=$?
 set -e
 [ "$CURL_EC" -ne 0 ] && ALBUMS_HTTP="000"
+set +e
+SHARED_HTTP=$(curl -sS -o /tmp/dropbox_verify_shared.json -w "%{http_code}" "${API_URL}shared-albums" 2>/dev/null)
+SHARED_EC=$?
+set -e
+[ "$SHARED_EC" -ne 0 ] && SHARED_HTTP="000"
+if [ "$SHARED_HTTP" = "200" ]; then
+  pass "GET ${API_URL}shared-albums (HTTP 200)"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "import json; d=json.load(open('/tmp/dropbox_verify_shared.json')); assert isinstance(d.get('albums'), list)" 2>/dev/null && pass "GET /shared-albums returns albums[]" || fail "GET /shared-albums body is not { albums: [] }"
+  fi
+else
+  fail "GET ${API_URL}shared-albums (expected HTTP 200, got HTTP ${SHARED_HTTP})"
+fi
+rm -f /tmp/dropbox_verify_shared.json
+
 if [ "$ALBUMS_HTTP" = "200" ]; then
   pass "GET ${API_URL}albums (HTTP 200)"
   if command -v python3 >/dev/null 2>&1; then

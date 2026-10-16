@@ -6,7 +6,8 @@
     "build":  "tsc",
     "deploy": "npx cdk deploy",
     "diff":   "npx cdk diff",
-    "synth":  "npx cdk synth"
+    "synth":  "npx cdk synth",
+    "test":   "node --test lib/baseId.test.mjs"
   },
   "devDependencies": {
     "@types/node":  "^20.0.0",
