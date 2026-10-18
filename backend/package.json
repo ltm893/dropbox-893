@@ -7,7 +7,7 @@
     "deploy": "npx cdk deploy",
     "diff":   "npx cdk diff",
     "synth":  "npx cdk synth",
-    "test":   "node --test lib/baseId.test.mjs"
+    "test":   "node --test lib/baseId.test.mjs lambda/getPrivateFiles/destKey.test.mjs lambda/getPrivateFiles/shareKey.test.mjs"
   },
   "devDependencies": {
     "@types/node":  "^20.0.0",

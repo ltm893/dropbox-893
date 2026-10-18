@@ -20,6 +20,16 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { destKeyForRename } from "./destKey.mjs";
+import {
+  isSharedLibraryKey,
+  mayRemoveSharedObject,
+  metadataWithOwner,
+  shareDestForKey,
+  sharedOwnerFromMetadata,
+} from "./shareKey.mjs";
+
+const SHARE_COPY_CONCURRENCY = 8;
+const MAX_SHARED_BYTES = 5 * 1024 * 1024 * 1024;
 
 const client = new S3Client({});
 
@@ -29,11 +39,17 @@ export const handler = async (event) => {
   const method = event.httpMethod;
 
   try {
+    // POST /files/share  →  copy a library file or folder to All DLIV Users
+    if (method === "POST" && isSharePath(event)) {
+      return await shareWithAll(event);
+    }
+
     // POST /files  →  presigned PUT URL for uploading (15 min)
     if (method === "POST" && (!pathParams || !pathParams.key)) {
       const body = JSON.parse(event.body ?? "{}");
       const { key, contentType } = body;
       if (!key) return respond(400, { error: "key is required" });
+      await assertCanReplaceShared(key, userSub(event));
       const url = await getPresignedUploadUrl(key, contentType);
       return respond(200, { url });
     }
@@ -54,6 +70,7 @@ export const handler = async (event) => {
       if (isReservedTopFolder(key, userSub(event))) {
         return respond(403, { error: "Cannot delete reserved shared folder" });
       }
+      await assertCanRemoveSharedKey(key, userSub(event));
       await deleteObject(key);
       return respond(200, { deleted: key });
     }
@@ -66,6 +83,7 @@ export const handler = async (event) => {
       if (mode === "remove" && isReservedTopFolder(prefix, userSub(event))) {
         return respond(403, { error: "Cannot remove reserved shared folder" });
       }
+      await assertCanRemoveSharedPrefix(prefix, userSub(event));
       const count = await deletePrefix(prefix, mode === "remove");
       return respond(200, { deleted: count, prefix });
     }
@@ -322,6 +340,167 @@ async function deletePrefix(prefix, removeFolder) {
     }
   } while (continuationToken);
   return count;
+}
+
+function isSharePath(event) {
+  const resource = String(event.resource || "");
+  const path = String(event.path || "");
+  return resource === "/files/share" || /\/files\/share\/?$/.test(path);
+}
+
+async function shareWithAll(event) {
+  const body = JSON.parse(event.body ?? "{}");
+  const plan = shareDestForKey(body.key, userSub(event), RESERVED_SHARED_PREFIXES);
+  if (plan.folder) await sharePrefix(plan.fromKey, plan.destKey, userSub(event));
+  else await shareFile(plan.fromKey, plan.destKey, userSub(event));
+  return respond(200, { key: plan.destKey, from: plan.fromKey, folder: plan.folder });
+}
+
+async function shareFile(fromKey, destKey, userId) {
+  await assertDestAbsent(destKey, "A file with that name is already available to all DLIV users.");
+  await copySharedObject(fromKey, destKey, userId);
+}
+
+async function sharePrefix(fromPrefix, destPrefix, userId) {
+  const from = fromPrefix.endsWith("/") ? fromPrefix : `${fromPrefix}/`;
+  const dest = destPrefix.endsWith("/") ? destPrefix : `${destPrefix}/`;
+  if (await prefixHasObjects(dest)) {
+    const err = new Error("A folder with that name is already available to all DLIV users.");
+    err.statusCode = 409;
+    throw err;
+  }
+  const keys = await listPrefixKeys(from);
+  if (!keys.length) {
+    const err = new Error("Folder not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const copied = [];
+  try {
+    for (let i = 0; i < keys.length; i += SHARE_COPY_CONCURRENCY) {
+      const batch = keys.slice(i, i + SHARE_COPY_CONCURRENCY);
+      await Promise.all(batch.map(async (key) => {
+        const destKey = `${dest}${key.slice(from.length)}`;
+        await copySharedObject(key, destKey, userId);
+        copied.push(destKey);
+      }));
+    }
+  } catch (err) {
+    try {
+      await deleteKeysQuiet(copied);
+    } catch (cleanupErr) {
+      console.error(cleanupErr);
+    }
+    throw err;
+  }
+}
+
+async function assertDestAbsent(destKey, message) {
+  const found = await readSharedOwner(destKey);
+  if (!found.missing) {
+    const err = new Error(message);
+    err.statusCode = 409;
+    throw err;
+  }
+}
+
+async function copySharedObject(fromKey, destKey, userId) {
+  const found = await readObjectHead(fromKey);
+  if (found.missing) {
+    const err = new Error("File not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const size = Number(found.head.ContentLength) || 0;
+  if (size > MAX_SHARED_BYTES) {
+    const err = new Error("Files larger than 5 GB cannot be shared.");
+    err.statusCode = 400;
+    throw err;
+  }
+  const input = {
+    Bucket: PRIVATE_BUCKET,
+    Key: destKey,
+    CopySource: encodedCopySource(fromKey),
+    MetadataDirective: "REPLACE",
+    Metadata: metadataWithOwner(found.head.Metadata, userId),
+    ContentType: found.head.ContentType || "application/octet-stream",
+  };
+  if (found.head.ContentDisposition) input.ContentDisposition = found.head.ContentDisposition;
+  if (found.head.ContentEncoding) input.ContentEncoding = found.head.ContentEncoding;
+  if (found.head.ContentLanguage) input.ContentLanguage = found.head.ContentLanguage;
+  if (found.head.CacheControl) input.CacheControl = found.head.CacheControl;
+  await client.send(new CopyObjectCommand(input));
+}
+
+async function assertCanReplaceShared(key, userId) {
+  if (!isSharedLibraryKey(key, RESERVED_SHARED_PREFIXES)) return;
+  const found = await readSharedOwner(key);
+  if (found.missing || !found.owner) return;
+  if (!mayRemoveSharedObject(found.owner, userId)) {
+    const err = new Error("Only the person who shared this file can replace it.");
+    err.statusCode = 403;
+    throw err;
+  }
+  const err = new Error("Remove the shared copy before replacing it.");
+  err.statusCode = 409;
+  throw err;
+}
+
+async function assertCanRemoveSharedKey(key, userId) {
+  if (!isSharedLibraryKey(key, RESERVED_SHARED_PREFIXES)) return;
+  const found = await readSharedOwner(key);
+  if (found.missing || mayRemoveSharedObject(found.owner, userId)) return;
+  const err = new Error("Only the person who shared this file can remove it.");
+  err.statusCode = 403;
+  throw err;
+}
+
+async function assertCanRemoveSharedPrefix(prefix, userId) {
+  const norm = normalizeFolderPrefix(prefix);
+  if (!isSharedLibraryKey(norm, RESERVED_SHARED_PREFIXES)) return;
+  const keys = await listPrefixKeys(norm);
+  for (let i = 0; i < keys.length; i += 16) {
+    const batch = keys.slice(i, i + 16);
+    const owners = await Promise.all(batch.map((key) => readSharedOwner(key)));
+    if (owners.some((found) => !found.missing && !mayRemoveSharedObject(found.owner, userId))) {
+      const err = new Error("Only the person who shared these files can remove them.");
+      err.statusCode = 403;
+      throw err;
+    }
+  }
+}
+
+async function readSharedOwner(key) {
+  const found = await readObjectHead(key);
+  if (found.missing) return found;
+  return { missing: false, owner: sharedOwnerFromMetadata(found.head.Metadata) };
+}
+
+async function readObjectHead(key) {
+  try {
+    const head = await client.send(new HeadObjectCommand({ Bucket: PRIVATE_BUCKET, Key: key }));
+    return { missing: false, head };
+  } catch (err) {
+    if (isMissingObject(err)) return { missing: true, head: null, owner: "" };
+    throw err;
+  }
+}
+
+function isMissingObject(err) {
+  const code = err.name || err.Code || "";
+  const http = Number(err.$metadata?.httpStatusCode) || 0;
+  return code === "NotFound" || code === "NoSuchKey" || http === 404;
+}
+
+async function deleteKeysQuiet(keys) {
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+    if (!chunk.length) continue;
+    await client.send(new DeleteObjectsCommand({
+      Bucket: PRIVATE_BUCKET,
+      Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+    }));
+  }
 }
 
 function respond(statusCode, body) {

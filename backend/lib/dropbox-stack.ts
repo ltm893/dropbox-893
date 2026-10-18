@@ -204,10 +204,12 @@ export class DropboxStack extends cdk.Stack {
 
     // ── Routes ────────────────────────────────────────────────────────────────
     const files = api.root.addResource("files");
-    files.addMethod("GET",    new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
-    files.addMethod("POST",   new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
-    files.addMethod("PATCH",  new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
-    files.addMethod("DELETE", new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
+    const filesIntegration = new apigateway.LambdaIntegration(getPrivateFilesLambda);
+    files.addMethod("GET",    filesIntegration, authOptions);
+    files.addMethod("POST",   filesIntegration, authOptions);
+    files.addMethod("PATCH",  filesIntegration, authOptions);
+    files.addMethod("DELETE", filesIntegration, authOptions);
+    files.addResource("share").addMethod("POST", filesIntegration, authOptions);
     const fileKey = files.addResource("{key+}");
     fileKey.addMethod("GET",    new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
     fileKey.addMethod("DELETE", new apigateway.LambdaIntegration(getPrivateFilesLambda), authOptions);
