@@ -1,6 +1,6 @@
 # CONTEXT.md — dropbox-893
 # Read this first at the start of every session.
-# Last updated: 2026-09-17
+# Last updated: 2026-10-18
 
 ## What this repo is
 Standalone add-on for cognito-s3-stack-893.
@@ -24,7 +24,7 @@ Template / CDK implementation — deploy with `deploy.sh` using your own `config
 ## What this stack owns
 - API Gateway (idempotent when used with `deploy.sh` logical-ID pinning)
 - Cognito App Client on your existing User Pool (created once by script + CDK pattern)
-- Lambda: **getPrivateFiles** — list, upload, download, delete (private S3)
+- Lambda: **getPrivateFiles** — list, upload, download, delete, and share into the root Music, Photos, and Videos folders (private S3)
 - Lambda: **getDlivPhotoBuckets** — list albums (public S3), `GET /albums`
 - Lambda: **getDlivPhotos** — list photos in album (public S3), `GET /albums/{album}`
 
@@ -85,10 +85,20 @@ cd backend
 | GET | /files | Cognito | List files and folders (`hasMp3s`, `hasImages`, `hasFiles`, `hasSubFolders`) |
 | GET | /files?prefix=X | Cognito | List with prefix |
 | POST | /files | Cognito | Get presigned upload URL (15min) |
+| POST | /files/share | Cognito | Copy a Mine Music, Photos, or Videos file or folder into the shared library |
 | GET | /files/{key+} | Cognito | Get presigned download URL (12hr) |
-| DELETE | /files/{key+} | Cognito | Delete single file |
-| DELETE | /files?prefix=X&mode=empty | Cognito | Empty folder |
-| DELETE | /files?prefix=X&mode=remove | Cognito | Remove folder |
+| DELETE | /files/{key+} | Cognito | Delete single file. A shared copy can be deleted only by the user who shared it |
+| DELETE | /files?prefix=X&mode=empty | Cognito | Empty folder. Refuses when the prefix holds a shared copy owned by someone else |
+| DELETE | /files?prefix=X&mode=remove | Cognito | Remove folder. Same owner check as empty |
+
+## Share with all DLIV users
+`POST /files/share` with `{ "key": "users/{sub}/Videos/Camping/clip.mp4" }`, or a folder key that ends in `/`. The caller must own that key, and it must sit inside their `Music/`, `Photos/`, or `Videos/` library, not on the library root itself.
+
+The copy keeps the path under the bucket-root library: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Camping/clip.mp4`. A folder copy includes every object under that prefix. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
+
+Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Remove, empty, and a presigned upload that would replace that object are allowed only for that user. Shared objects with no `owner` metadata, including files uploaded directly into `Music/`, `Photos/`, or `Videos/`, can still be removed by any signed-in user.
+
+The Mine menu item is **All DLIV users** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
 
 ## API routes — slideshow (public)
 | Method | Path | Auth | Description |
@@ -107,6 +117,7 @@ dropbox-893/
 │   ├── lib/dropbox-stack.ts
 │   ├── lambda/
 │   │   ├── getPrivateFiles/handler.mjs
+│   │   ├── getPrivateFiles/shareKey.mjs
 │   │   ├── getDlivPhotoBuckets/handler.mjs
 │   │   └── getDlivPhotos/handler.mjs
 │   ├── scripts/
