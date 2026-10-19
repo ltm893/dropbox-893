@@ -19,7 +19,7 @@ import {
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { destKeyForRename } from "./destKey.mjs";
+import { destKeyForMove, destKeyForRename } from "./destKey.mjs";
 import {
   assertRenameInPersonalLibrary,
   assertUploadInOwnLibrary,
@@ -92,10 +92,18 @@ export const handler = async (event) => {
       return respond(200, { deleted: count, prefix });
     }
 
-    // PATCH /files  →  rename a file or folder in place
+    // PATCH /files  →  rename in place, or move inside the caller's library
     if (method === "PATCH" && (!pathParams || !pathParams.key)) {
       const body = JSON.parse(event.body ?? "{}");
       const fromKey = String(body.key || "").replace(/^\/+/, "");
+      if (Object.prototype.hasOwnProperty.call(body, "destPrefix")) {
+        const dest = destKeyForMove(fromKey, body.destPrefix, userSub(event));
+        if (dest.unchanged) return respond(200, { key: dest.destKey, name: dest.name, unchanged: true });
+        const moved = dest.folder
+          ? await renamePrefix(dest.fromKey, dest.destKey)
+          : await renameObject(fromKey, dest.destKey);
+        return respond(200, { key: moved, name: dest.name, from: dest.fromKey });
+      }
       const dest = destKeyForRename(fromKey, body.name);
       if (dest.unchanged) return respond(200, { key: dest.destKey, name: dest.name, unchanged: true });
       if (isReservedTopFolder(fromKey, userSub(event)) || isReservedTopFolder(dest.destKey, userSub(event))) {
