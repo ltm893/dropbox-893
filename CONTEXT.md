@@ -1,6 +1,6 @@
 # CONTEXT.md — dropbox-893
 # Read this first at the start of every session.
-# Last updated: 2026-10-18
+# Last updated: 2026-10-19
 
 ## What this repo is
 Standalone add-on for cognito-s3-stack-893.
@@ -84,8 +84,8 @@ cd backend
 |--------|------|------|-------------|
 | GET | /files | Cognito | List files and folders (`hasMp3s`, `hasImages`, `hasFiles`, `hasSubFolders`) |
 | GET | /files?prefix=X | Cognito | List with prefix |
-| POST | /files | Cognito | Get presigned upload URL (15min) |
-| POST | /files/share | Cognito | Copy a Mine Music, Photos, or Videos file or folder into the shared library |
+| POST | /files | Cognito | Get presigned upload URL (15min). The key must be under the caller's `users/{sub}/` library |
+| POST | /files/share | Cognito | Copy a Mine Music, Photos, or Videos file or folder into `{library}/{sharer name}/` |
 | GET | /files/{key+} | Cognito | Get presigned download URL (12hr) |
 | DELETE | /files/{key+} | Cognito | Delete single file. A shared copy can be deleted only by the user who shared it |
 | DELETE | /files?prefix=X&mode=empty | Cognito | Empty folder. Refuses when the prefix holds a shared copy owned by someone else |
@@ -94,11 +94,11 @@ cd backend
 ## Share with all DLIV users
 `POST /files/share` with `{ "key": "users/{sub}/Videos/Camping/clip.mp4" }`, or a folder key that ends in `/`. The caller must own that key, and it must sit inside their `Music/`, `Photos/`, or `Videos/` library, not on the library root itself.
 
-The copy keeps the path under the bucket-root library: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Camping/clip.mp4`. A folder copy includes every object under that prefix. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
+The copy is placed under a folder named for the sharer. The name comes from the account name, or the email name when no account name is set: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Wenner2026/Camping/clip.mp4`. A folder can be shared when it contains files and no folders inside it. That copy includes those files. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
 
-Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Remove, empty, and a presigned upload that would replace that object are allowed only for that user. Shared objects with no `owner` metadata, including files uploaded directly into `Music/`, `Photos/`, or `Videos/`, can still be removed by any signed-in user.
+Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Only that user can remove or empty that shared copy. `POST /files` rejects any key outside `users/{sub}/`, so All DLIV Users receives new files and folders only through `POST /files/share`. `PATCH /files` rejects a rename unless the key is under `users/`. Shared objects already there with no `owner` metadata can still be removed by any signed-in user.
 
-The Mine menu item is **All DLIV users** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
+The Mine menu item is **Share on DLIV** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
 
 ## API routes — slideshow (public)
 | Method | Path | Auth | Description |

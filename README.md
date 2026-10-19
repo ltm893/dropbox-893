@@ -6,7 +6,7 @@ Amplify is **not** used for this backend — run **`deploy.sh`** from your machi
 
 ## Features
 
-- **`/files`** — list, presigned upload/download, delete, and `POST /files/share` (private bucket; Cognito JWT). Share copies a caller's Music, Photos, or Videos file or folder into the shared library. The personal copy stays, and only that user can remove the shared copy.
+- **`/files`** — list, presigned upload/download, delete, and `POST /files/share` (private bucket; Cognito JWT). Uploads stay in the caller's library. Share copies a Music, Photos, or Videos file or folder into `{library}/{name}/`, using the account name or the email name. The personal copy stays, and only that user can remove the shared copy.
 - **`GET /albums`** — list album prefixes (public bucket; no auth)
 - **`GET /albums/{album}`** — list image URLs in an album (public bucket; no auth)
 
