@@ -21,10 +21,12 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { destKeyForRename } from "./destKey.mjs";
 import {
+  assertUploadInOwnLibrary,
   isSharedLibraryKey,
   mayRemoveSharedObject,
   metadataWithOwner,
   shareDestForKey,
+  shareOwnerFolderName,
   sharedOwnerFromMetadata,
 } from "./shareKey.mjs";
 
@@ -49,7 +51,7 @@ export const handler = async (event) => {
       const body = JSON.parse(event.body ?? "{}");
       const { key, contentType } = body;
       if (!key) return respond(400, { error: "key is required" });
-      await assertCanReplaceShared(key, userSub(event));
+      assertUploadInOwnLibrary(key, userSub(event));
       const url = await getPresignedUploadUrl(key, contentType);
       return respond(200, { url });
     }
@@ -350,7 +352,9 @@ function isSharePath(event) {
 
 async function shareWithAll(event) {
   const body = JSON.parse(event.body ?? "{}");
-  const plan = shareDestForKey(body.key, userSub(event), RESERVED_SHARED_PREFIXES);
+  const claims = event.requestContext?.authorizer?.claims || {};
+  const ownerFolder = shareOwnerFolderName({ ...claims, sub: userSub(event) || claims.sub });
+  const plan = shareDestForKey(body.key, userSub(event), RESERVED_SHARED_PREFIXES, ownerFolder);
   if (plan.folder) await sharePrefix(plan.fromKey, plan.destKey, userSub(event));
   else await shareFile(plan.fromKey, plan.destKey, userSub(event));
   return respond(200, { key: plan.destKey, from: plan.fromKey, folder: plan.folder });
@@ -430,20 +434,6 @@ async function copySharedObject(fromKey, destKey, userId) {
   if (found.head.ContentLanguage) input.ContentLanguage = found.head.ContentLanguage;
   if (found.head.CacheControl) input.CacheControl = found.head.CacheControl;
   await client.send(new CopyObjectCommand(input));
-}
-
-async function assertCanReplaceShared(key, userId) {
-  if (!isSharedLibraryKey(key, RESERVED_SHARED_PREFIXES)) return;
-  const found = await readSharedOwner(key);
-  if (found.missing || !found.owner) return;
-  if (!mayRemoveSharedObject(found.owner, userId)) {
-    const err = new Error("Only the person who shared this file can replace it.");
-    err.statusCode = 403;
-    throw err;
-  }
-  const err = new Error("Remove the shared copy before replacing it.");
-  err.statusCode = 409;
-  throw err;
 }
 
 async function assertCanRemoveSharedKey(key, userId) {
