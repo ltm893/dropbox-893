@@ -87,6 +87,7 @@ cd backend
 | POST | /files | Cognito | Get presigned upload URL (15min). The key must be under the caller's `users/{sub}/` library |
 | POST | /files/share | Cognito | Copy a Mine Music, Photos, or Videos file or folder into `{library}/{sharer name}/` |
 | GET | /files/{key+} | Cognito | Get presigned download URL (12hr) |
+| PATCH | /files | Cognito | Rename in place, or move inside the caller's `users/{sub}/` when `destPrefix` is set. Music, Photos, and Videos stay put |
 | DELETE | /files/{key+} | Cognito | Delete single file. A shared copy can be deleted only by the user who shared it |
 | DELETE | /files?prefix=X&mode=empty | Cognito | Empty folder. Refuses when the prefix holds a shared copy owned by someone else |
 | DELETE | /files?prefix=X&mode=remove | Cognito | Remove folder. Same owner check as empty |

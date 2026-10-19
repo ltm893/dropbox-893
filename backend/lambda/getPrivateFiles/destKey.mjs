@@ -37,6 +37,39 @@ export function destKeyForRename(fromKey, typedName) {
   return { fromKey: fromNorm, destKey, name, unchanged: destKey === fromNorm, folder };
 }
 
+export function destKeyForMove(fromKey, destPrefix, userId) {
+  const raw = String(fromKey || "").replace(/^\/+/, "");
+  const user = String(userId || "").trim();
+  if (!user) fail(401, "Sign in required");
+  if (!raw) fail(400, "Choose a file or folder to move.");
+  const home = `users/${user}/`;
+  if (!raw.startsWith(home)) fail(403, "Move files and folders from your library.");
+  const folder = raw.endsWith("/");
+  const fromNorm = raw;
+  const reserved = ["Music/", "Photos/", "Videos/"].map((name) => `${home}${name}`);
+  if (fromNorm === home || (folder && reserved.includes(fromNorm))) {
+    fail(400, "That folder stays where it is.");
+  }
+  let dest = String(destPrefix || "").replace(/^\/+/, "").trim();
+  if (!dest) fail(400, "Choose a folder in your library.");
+  if (!dest.endsWith("/")) dest += "/";
+  if (!dest.startsWith(home) || dest.split("/").some((part) => part === "." || part === "..")) {
+    fail(403, "Choose a folder in your library.");
+  }
+  if (folder && (dest === fromNorm || dest.startsWith(fromNorm))) {
+    fail(400, "Choose a folder that is not inside this one.");
+  }
+  const base = fromNorm.split("/").filter(Boolean).pop() || "";
+  const destKey = folder ? `${dest}${base}/` : `${dest}${base}`;
+  return { fromKey: fromNorm, destKey, name: base, folder, unchanged: destKey === fromNorm };
+}
+
+function fail(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  throw err;
+}
+
 function fileExtension(name) {
   const base = String(name || "").split("/").pop() || "";
   const dot = base.lastIndexOf(".");
