@@ -21,6 +21,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { destKeyForRename } from "./destKey.mjs";
 import {
+  assertRenameInPersonalLibrary,
   assertUploadInOwnLibrary,
   isSharedLibraryKey,
   mayRemoveSharedObject,
@@ -100,6 +101,8 @@ export const handler = async (event) => {
       if (isReservedTopFolder(fromKey, userSub(event)) || isReservedTopFolder(dest.destKey, userSub(event))) {
         return respond(403, { error: "Cannot rename a reserved folder" });
       }
+      assertRenameInPersonalLibrary(fromKey);
+      assertRenameInPersonalLibrary(dest.destKey);
       const renamed = dest.folder
         ? await renamePrefix(dest.fromKey, dest.destKey)
         : await renameObject(fromKey, dest.destKey);

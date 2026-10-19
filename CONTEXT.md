@@ -96,7 +96,7 @@ cd backend
 
 The copy is placed under a folder named for the sharer. The name comes from the account name, or the email name when no account name is set: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Wenner2026/Camping/clip.mp4`. A folder can be shared when it contains files and no folders inside it. That copy includes those files. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
 
-Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Only that user can remove or empty that shared copy. `POST /files` rejects any key outside `users/{sub}/`, so All DLIV Users receives new files and folders only through `POST /files/share`. Shared objects already there with no `owner` metadata can still be removed by any signed-in user.
+Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Only that user can remove or empty that shared copy. `POST /files` rejects any key outside `users/{sub}/`, so All DLIV Users receives new files and folders only through `POST /files/share`. `PATCH /files` rejects a rename unless the key is under `users/`. Shared objects already there with no `owner` metadata can still be removed by any signed-in user.
 
 The Mine menu item is **Share on DLIV** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
 

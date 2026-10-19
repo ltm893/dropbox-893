@@ -80,6 +80,13 @@ export function metadataWithOwner(existing, userId) {
   return metadata;
 }
 
+export function assertRenameInPersonalLibrary(key) {
+  const raw = String(key || "").replace(/^\/+/, "");
+  if (!raw.startsWith("users/")) {
+    fail(403, "Rename files and folders from your library. All DLIV Users shows shared copies.");
+  }
+}
+
 export function assertUploadInOwnLibrary(key, userId) {
   const user = String(userId || "").trim();
   if (!user) fail(401, "Sign in required");
