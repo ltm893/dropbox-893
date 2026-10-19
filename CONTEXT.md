@@ -98,7 +98,7 @@ The copy is placed under a folder named for the sharer. The name comes from the 
 
 Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Only that user can remove or empty that shared copy. `POST /files` rejects any key outside `users/{sub}/`, so All DLIV Users receives new files and folders only through `POST /files/share`. Shared objects already there with no `owner` metadata can still be removed by any signed-in user.
 
-The Mine menu item is **All DLIV users** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
+The Mine menu item is **Share on DLIV** in `web-app-893`. Deploy this API from `backend/` with `./scripts/deploy.sh`. That updates the API the site already calls. The menu is static JavaScript, so it appears only after Amplify rebuilds `dliv-web` and `scripts/assemble.sh` clones the `web-app-893` branch named by `TEMPLATE_REF`. A push to `web-app-893` does not start that build.
 
 ## API routes — slideshow (public)
 | Method | Path | Auth | Description |
