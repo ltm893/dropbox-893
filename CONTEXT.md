@@ -94,7 +94,7 @@ cd backend
 ## Share with all DLIV users
 `POST /files/share` with `{ "key": "users/{sub}/Videos/Camping/clip.mp4" }`, or a folder key that ends in `/`. The caller must own that key, and it must sit inside their `Music/`, `Photos/`, or `Videos/` library, not on the library root itself.
 
-The copy is placed under a folder named for the sharer. The name comes from the account name, or the email name when no account name is set: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Wenner2026/Camping/clip.mp4`. A folder copy includes every object under that prefix. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
+The copy is placed under a folder named for the sharer. The name comes from the account name, or the email name when no account name is set: `users/{sub}/Videos/Camping/clip.mp4` becomes `Videos/Wenner2026/Camping/clip.mp4`. A folder can be shared when it contains files and no folders inside it. That copy includes those files. The personal original stays. If that shared file or folder already exists, the call returns 409 and copies nothing. Files larger than 5 GB are rejected.
 
 Each copied object stores S3 user metadata `owner` set to the caller's Cognito sub. Only that user can remove or empty that shared copy. `POST /files` rejects any key outside `users/{sub}/`, so All DLIV Users receives new files and folders only through `POST /files/share`. Shared objects already there with no `owner` metadata can still be removed by any signed-in user.
 

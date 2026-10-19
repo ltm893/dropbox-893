@@ -45,6 +45,21 @@ export function shareDestForKey(fromKey, userId, libraries = DEFAULT_LIBRARIES, 
   };
 }
 
+export function shareFolderContentsError(keys, prefix) {
+  const from = String(prefix || "").endsWith("/") ? String(prefix || "") : `${prefix || ""}/`;
+  const relative = (keys || [])
+    .map((key) => String(key || ""))
+    .filter((key) => key.startsWith(from) && key.length > from.length)
+    .map((key) => key.slice(from.length));
+  if (relative.some((name) => name.includes("/"))) {
+    return "This folder has folders inside it. Share a folder that contains only files.";
+  }
+  if (!relative.some((name) => name && !name.endsWith("/"))) {
+    return "This folder has no files to share.";
+  }
+  return "";
+}
+
 export function isSharedLibraryKey(key, libraries = DEFAULT_LIBRARIES) {
   const raw = String(key || "").replace(/^\/+/, "");
   if (!raw || raw.startsWith("users/")) return false;

@@ -6,6 +6,7 @@ import {
   mayRemoveSharedObject,
   metadataWithOwner,
   shareDestForKey,
+  shareFolderContentsError,
   shareOwnerFolderName,
   sharedOwnerFromMetadata,
 } from "./shareKey.mjs";
@@ -30,6 +31,25 @@ test("an album folder copies under the sharer's name", () => {
 test("music nested under an album keeps that album", () => {
   const out = shareDestForKey(`users/${user}/Music/1973 Rupert/track.mp3`, user, undefined, "Wenner2026");
   assert.equal(out.destKey, "Music/Wenner2026/1973 Rupert/track.mp3");
+});
+
+test("a shared folder must contain files and no nested folders", () => {
+  const prefix = `users/${user}/Photos/Florence/`;
+  assert.equal(shareFolderContentsError([
+    prefix,
+    `${prefix}a.jpg`,
+    `${prefix}b.jpg`,
+  ], prefix), "");
+  assert.match(shareFolderContentsError([
+    prefix,
+    `${prefix}Day1/a.jpg`,
+  ], prefix), /folders inside it/);
+  assert.match(shareFolderContentsError([
+    prefix,
+    `${prefix}a.jpg`,
+    `${prefix}Day1/b.jpg`,
+  ], prefix), /folders inside it/);
+  assert.match(shareFolderContentsError([prefix], prefix), /no files/);
 });
 
 test("the sharer folder comes from the account name", () => {

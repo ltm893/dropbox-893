@@ -26,6 +26,7 @@ import {
   mayRemoveSharedObject,
   metadataWithOwner,
   shareDestForKey,
+  shareFolderContentsError,
   shareOwnerFolderName,
   sharedOwnerFromMetadata,
 } from "./shareKey.mjs";
@@ -377,6 +378,12 @@ async function sharePrefix(fromPrefix, destPrefix, userId) {
   if (!keys.length) {
     const err = new Error("Folder not found.");
     err.statusCode = 404;
+    throw err;
+  }
+  const contentsError = shareFolderContentsError(keys, from);
+  if (contentsError) {
+    const err = new Error(contentsError);
+    err.statusCode = 400;
     throw err;
   }
   const copied = [];
