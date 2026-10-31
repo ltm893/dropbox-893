@@ -5,7 +5,8 @@
 # Idempotent — safe to run on every deploy:
 #   - Cognito app client: checked by name, created only if missing
 #   - API Gateway:        checked by name, imports real logical ID if found
-#   - S3 bucket:          imported by name, never created or deleted
+#   - S3 buckets:         imported by name, never created or deleted
+#   - Public bucket CORS: replaced with the base-stack rule so a browser can PUT
 #
 # Usage:
 #   cd backend && ./scripts/deploy.sh
@@ -56,10 +57,15 @@ if [ -z "$AWS_REGION" ] && [ -f "$BASE_CONFIG" ]; then
   AWS_REGION=$(config_field "$BASE_CONFIG" awsRegion)
 fi
 USER_POOL_ID=$(config_field "$CONFIG_FILE" userPoolId)
+PUBLIC_BUCKET=$(config_field "$CONFIG_FILE" publicBucket)
 
 if [ -z "$CONFIG_ID" ] || [ "$CONFIG_ID" = "your-id-here" ] || [ -z "$AWS_REGION" ] || [ -z "$USER_POOL_ID" ]; then
   echo "  ❌ Could not read id, region, and userPoolId."
   echo "     id is set in the base config.ts. userPoolId stays in this config.ts."
+  exit 1
+fi
+if [ -z "$PUBLIC_BUCKET" ] || [ "$PUBLIC_BUCKET" = "your-id-here-public" ]; then
+  echo "  ❌ publicBucket is not set in backend/bin/config.ts."
   exit 1
 fi
 
@@ -71,6 +77,7 @@ echo "  Stack:       $STACK_NAME"
 echo "  Region:      $AWS_REGION"
 echo "  ID prefix:   $CONFIG_ID ($ID_FROM)"
 echo "  User Pool:   $USER_POOL_ID"
+echo "  Public bucket: $PUBLIC_BUCKET"
 echo ""
 
 # ── Check / create Cognito app client (idempotent) ────────────────────────────
@@ -143,10 +150,43 @@ if [ -n "$EXISTING_API_ID" ]; then
 else
   echo "    API Gateway:     will be created by CDK"
 fi
-echo "    S3 bucket:       imported only — never modified"
+echo "    S3 buckets:      imported, not created"
+echo "    Public CORS:     $PUBLIC_BUCKET (GET HEAD PUT DELETE, any origin)"
 echo ""
 read -p "  Proceed? (y/n): " CONFIRM
 if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then echo "  Cancelled."; exit 0; fi
+
+# The base stack only writes CORS onto the bucket it creates. This public
+# bucket is imported, and a name with a dot (dliv.com-2) is reached with a
+# path-style URL. Without this rule the browser preflight fails and the page
+# shows "Failed to fetch". put-bucket-cors replaces the bucket's CORS.
+ensure_public_bucket_cors() {
+  local cors_file
+  cors_file="$(mktemp)"
+  trap 'rm -f "$cors_file"' RETURN
+  cat > "$cors_file" << 'JSON'
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["*"],
+      "AllowedMethods": ["GET", "HEAD", "PUT", "DELETE"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}
+JSON
+  echo ""
+  echo "  Setting CORS on public bucket '$PUBLIC_BUCKET'..."
+  aws s3api put-bucket-cors \
+    --bucket "$PUBLIC_BUCKET" \
+    --region "$AWS_REGION" \
+    --cors-configuration "file://${cors_file}"
+  rm -f "$cors_file"
+  echo "  ✅ Browser can PUT to $PUBLIC_BUCKET"
+}
+ensure_public_bucket_cors
 
 # ── Install deps ──────────────────────────────────────────────────────────────
 cd "$BACKEND_DIR"
@@ -212,7 +252,6 @@ echo "  API Gateway ID: $EXISTING_API_ID"
 echo "  User Pool:      $USER_POOL_ID_OUT"
 echo "  App Client:     $APP_CLIENT_ID"
 echo "  Private Bucket: $PRIVATE_BUCKET"
+echo "  Public Bucket:  $PUBLIC_BUCKET"
 echo "  ────────────────────────────────────────────────────"
-echo ""
-echo "  Next: share dropbox_outputs.json with music-player-893 and dliv-web-893."
 echo ""

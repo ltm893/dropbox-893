@@ -9,8 +9,10 @@ Amplify is **not** used for this backend — run **`deploy.sh`** from your machi
 - **`/files`** — list, presigned upload/download, delete, and `POST /files/share` (private bucket; Cognito JWT). Uploads stay in the caller's library. Share copies a Music, Photos, or Videos file or folder into `{library}/{name}/`, using the account name or the email name. The personal copy stays, and only that user can remove the shared copy.
 - **`GET /albums`** — list album prefixes (public bucket; no auth)
 - **`GET /albums/{album}`** — list image URLs in an album (public bucket; no auth)
+- **`GET /demos`** — list public images, PDFs, and MP4s under `demos/` (no auth)
+- **`POST /demos`** — signed-in user gets a presigned PUT for one image, PDF, or MP4
 
-S3 buckets are **referenced only**; this stack does **not** create or delete them.
+S3 buckets are **referenced only**; this stack does **not** create or delete them. `deploy.sh` sets CORS on the public bucket (GET, HEAD, PUT, DELETE, any origin) so a browser can PUT a presigned demo. The base stack only writes that rule onto the bucket it creates.
 
 ## Prerequisites
 

@@ -144,6 +144,25 @@ export class DropboxStack extends cdk.Stack {
       ],
     }));
 
+    const demosLambda = new lambda.Function(this, "Demos", {
+      runtime:     lambda.Runtime.NODEJS_20_X,
+      handler:     "handler.handler",
+      code:        lambda.Code.fromAsset(path.join(__dirname, "../lambda/demos")),
+      environment: {
+        PUBLIC_BUCKET: config.publicBucket,
+      },
+      timeout:     cdk.Duration.seconds(15),
+    });
+    demosLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions:   ["s3:ListBucket"],
+      resources: [`arn:aws:s3:::${config.publicBucket}`],
+      conditions: { StringLike: { "s3:prefix": ["demos/", "demos/*"] } },
+    }));
+    demosLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions:   ["s3:PutObject", "s3:GetObject"],
+      resources: [`arn:aws:s3:::${config.publicBucket}/demos/*`],
+    }));
+
     // ── IAM — explicit policy covering private bucket ─────────────────────────
     getPrivateFilesLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
@@ -226,6 +245,12 @@ export class DropboxStack extends cdk.Stack {
     sharedAlbumPhotos.addMethod("POST", sharedAlbumsIntegration, authOptions);
     sharedAlbumPhotos.addMethod("DELETE", sharedAlbumsIntegration, authOptions);
     sharedAlbumPhotos.addResource("{filename}").addMethod("DELETE", sharedAlbumsIntegration, authOptions);
+
+    // ── Public demos. GET is open. POST requires a signed-in DLIV user. ──────
+    const demos = api.root.addResource("demos");
+    const demosIntegration = new apigateway.LambdaIntegration(demosLambda);
+    demos.addMethod("GET", demosIntegration);
+    demos.addMethod("POST", demosIntegration, authOptions);
 
     // ── Slideshow routes (no auth — public) ───────────────────────────────────
     const albums = api.root.addResource("albums");
