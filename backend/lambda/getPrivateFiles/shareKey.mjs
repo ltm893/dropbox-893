@@ -80,11 +80,18 @@ export function metadataWithOwner(existing, userId) {
   return metadata;
 }
 
+export function isSharedVideoFile(key) {
+  const raw = String(key || "").replace(/^\/+/, "");
+  if (!/\.(mp4|m4v|mov|webm)$/i.test(raw) || raw.endsWith("/")) return false;
+  if (!raw.startsWith("Videos/") || raw.startsWith("users/")) return false;
+  const parts = raw.split("/");
+  return parts.length >= 2 && parts.length <= 16 && parts.every((part) => part && part !== "." && part !== "..");
+}
+
 export function assertRenameInPersonalLibrary(key) {
   const raw = String(key || "").replace(/^\/+/, "");
-  if (!raw.startsWith("users/")) {
-    fail(403, "Rename files and folders from your library. All DLIV Users shows shared copies.");
-  }
+  if (raw.startsWith("users/") || isSharedVideoFile(raw)) return;
+  fail(403, "Rename files and folders from your library. All DLIV Users shows shared copies.");
 }
 
 export function assertUploadInOwnLibrary(key, userId) {
