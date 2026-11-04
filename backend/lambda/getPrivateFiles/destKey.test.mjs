@@ -24,7 +24,9 @@ test("library roots and other libraries cannot be moved", () => {
   const user = "11111111-2222-3333-4444-555555555555";
   assert.throws(() => destKeyForMove(`users/${user}/Videos/`, `users/${user}/Photos/`, user), /stays where it is/);
   assert.throws(() => destKeyForMove(`users/${user}/Videos/TaylorsGang/`, `users/${user}/Videos/TaylorsGang/Inside/`, user), /not inside this one/);
-  assert.throws(() => destKeyForMove("Videos/clip.mp4", `users/${user}/Photos/`, user), /your library/);
+  assert.throws(() => destKeyForMove("Videos/clip.mp4", `users/${user}/Photos/`, user), /All DLIV Users/);
+  const sharedMove = destKeyForMove("Videos/TaylorsGang/SlateShadows.mp4", "Videos/MelchiorreMovies/", user);
+  assert.equal(sharedMove.destKey, "Videos/MelchiorreMovies/SlateShadows.mp4");
   assert.throws(() => destKeyForMove(`users/${user}/Videos/clip.mp4`, "Photos/Trip/", user), /your library/);
 });
 
