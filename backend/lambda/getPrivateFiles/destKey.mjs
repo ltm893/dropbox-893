@@ -37,11 +37,30 @@ export function destKeyForRename(fromKey, typedName) {
   return { fromKey: fromNorm, destKey, name, unchanged: destKey === fromNorm, folder };
 }
 
+function sharedVideoMove(raw, destPrefix) {
+  if (!/\.(mp4|m4v|mov|webm)$/i.test(raw) || raw.endsWith("/")) fail(400, "Move a video file.");
+  const fromParts = raw.split("/");
+  if (!raw.startsWith("Videos/") || fromParts.some((part) => !part || part === "." || part === "..")) {
+    fail(403, "Move a video from All DLIV Users → Videos.");
+  }
+  let dest = String(destPrefix || "").replace(/^\/+/, "").trim();
+  if (!dest) fail(400, "Choose a folder in All DLIV Users → Videos.");
+  if (!dest.endsWith("/")) dest += "/";
+  const destParts = dest.slice(0, -1).split("/");
+  if (!dest.startsWith("Videos/") || destParts.some((part) => !part || part === "." || part === "..")) {
+    fail(403, "Choose a folder in All DLIV Users → Videos.");
+  }
+  const base = fromParts.filter(Boolean).pop() || "";
+  const destKey = `${dest}${base}`;
+  return { fromKey: raw, destKey, name: base, folder: false, unchanged: destKey === raw };
+}
+
 export function destKeyForMove(fromKey, destPrefix, userId) {
   const raw = String(fromKey || "").replace(/^\/+/, "");
   const user = String(userId || "").trim();
   if (!user) fail(401, "Sign in required");
   if (!raw) fail(400, "Choose a file or folder to move.");
+  if (raw.startsWith("Videos/") && !raw.startsWith("users/")) return sharedVideoMove(raw, destPrefix);
   const home = `users/${user}/`;
   if (!raw.startsWith(home)) fail(403, "Move files and folders from your library.");
   const folder = raw.endsWith("/");

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertRenameInPersonalLibrary,
+  isSharedVideoFile,
   assertUploadInOwnLibrary,
   isSharedLibraryKey,
   mayRemoveSharedObject,
@@ -79,7 +80,9 @@ test("shared library keys are the root Music, Photos, and Videos folders", () =>
 test("renames stay in a personal library", () => {
   assert.doesNotThrow(() => assertRenameInPersonalLibrary(`users/${user}/Photos/Trip/`));
   assert.throws(() => assertRenameInPersonalLibrary("Photos/Wenner2026/Trip/"), /your library/);
-  assert.throws(() => assertRenameInPersonalLibrary("Videos/clip.mp4"), /your library/);
+  assert.doesNotThrow(() => assertRenameInPersonalLibrary("Videos/TaylorsGang/SlateShadows.mp4"));
+  assert.equal(isSharedVideoFile("Videos/TaylorsGang/SlateShadows.mp4"), true);
+  assert.throws(() => assertRenameInPersonalLibrary("Photos/Wenner2026/Trip/"), /your library/);
   assert.throws(() => assertRenameInPersonalLibrary("Notes/a.txt"), /your library/);
 });
 
