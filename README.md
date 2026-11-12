@@ -6,7 +6,7 @@ Amplify is **not** used for this backend — run **`deploy.sh`** from your machi
 
 ## Features
 
-- **`/files`** — list, presigned upload/download, delete, and `POST /files/share` (private bucket; Cognito JWT). Uploads stay in the caller's library. Share copies a Music, Photos, or Videos file or folder into `{library}/{name}/`, using the account name or the email name. The personal copy stays, and only that user can remove the shared copy.
+- **`/files`** — list, presigned upload/download, delete, and `POST /files/share` (private bucket; Cognito JWT). Uploads stay in the caller's library. Share copies a Music, Photos, or Videos file or folder into `{library}/{name}/`, using the account name or the email name. The personal copy stays, and only that user can remove the shared copy. A video under `Videos/` can be renamed or moved to another folder under `Videos/`. Other shared files cannot.
 - **`GET /albums`** — list album prefixes (public bucket; no auth)
 - **`GET /albums/{album}`** — list image URLs in an album (public bucket; no auth)
 - **`GET /demos`** — list public images, PDFs, and MP4s under `demos/` (no auth)
@@ -37,6 +37,10 @@ npm install
 ```
 
 `deploy.sh` prompts for confirmation, runs **`cdk deploy`**, and writes **`dropbox_outputs.json`** at the **repository root** (pool ID, client ID, API URL — **keep private**, gitignored by default).
+
+## Tests
+
+`git push` runs `npm test` in `backend/` before the push, using Node 20. A new clone needs `bash scripts/install-git-hooks.sh` once. `SKIP_TESTS=1 git push` skips the check. GitHub runs the same tests on a pull request and does not require them to pass.
 
 ## Verify
 
